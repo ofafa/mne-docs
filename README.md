@@ -7,7 +7,7 @@ pycon 2021 sprint
 # contribution guide
 - get the code
 ```
-git pull https://github.com/ofafa/mne-docs
+git clone https://github.com/ofafa/mne-docs.git
 ```
 
 - switch to the branch related to the work you are going to do
