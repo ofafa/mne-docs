@@ -66,7 +66,7 @@ def export_dataset(
     if output_type.lower() == "csv":
         text_df.to_csv(export_path + '.csv')
     if output_type.lower() == "json":
-        text_df.to_json(export_path + '.json')
+        text_df.to_json(export_path + '.json', orient="records", indent=2)
     if output_type.lower() == "pickle":
         text_df.to_pickle(output_path + '.pickle')
     logger.info("convert file finished")
