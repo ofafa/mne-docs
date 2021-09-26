@@ -1,6 +1,6 @@
 # Simulate raw data using subject anatomy
 # 利用樣本生理結構模擬原始數據
-#translator: Yanni Wu
+#translator: Yanni Wu   #colab version: https://colab.research.google.com/drive/1O6tlh1ovigIpr52fdc8jO8vLgX8CYge1#scrollTo=zit9-YXvp_DC
 
 #原文網址：https://mne.tools/stable/auto_examples/simulation/simulated_raw_data_using_subject_anatomy.html#sphx-glr-auto-examples-simulation-simulated-raw-data-using-subject-anatomy-py
 
