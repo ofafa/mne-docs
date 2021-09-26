@@ -14,8 +14,22 @@
 pipenv install --skip-lock
 ```
 
+- run virtualenv
+```
+pipenv shell
+
+```
+
+- show cli info
+```
+pipenv run python converter.py --help
+
+```
+
 - run cli
 ```
 pipenv run python converter.py --textgrid_file TG_00301.TextGrid --sample_rate 10
 ```
+
+
 
