@@ -22,6 +22,7 @@ touch classes/class.md
 
 - commit and update your changes
 ```
+git add file_you_changes
 git commit -m "adding new docs of raw"
 git push --set-upstream origin branchname
 ```

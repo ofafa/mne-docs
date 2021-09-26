@@ -1,0 +1,178 @@
+# Simulate raw data using subject anatomy
+# 利用樣本生理結構模擬原始數據
+#translator: Yanni Wu   #colab version: https://colab.research.google.com/drive/1O6tlh1ovigIpr52fdc8jO8vLgX8CYge1#scrollTo=zit9-YXvp_DC
+
+#原文網址：https://mne.tools/stable/auto_examples/simulation/simulated_raw_data_using_subject_anatomy.html#sphx-glr-auto-examples-simulation-simulated-raw-data-using-subject-anatomy-py
+
+#Author: Ivana Kojcic <ivana.kojcic@gmail.com>
+#Eric Larson <larson.eric.d@gmail.com>
+#Kostiantyn Maksymenko <kostiantyn.maksymenko@gmail.com>
+#Samuel Deslauriers-Gauthier <sam.deslauriers@gmail.com>
+#License: BSD (3-clause)
+
+#此範例闡述如何使用mne.simulation.SourceSimulator的類組以樣本生理結構進行來源估計以及模擬原始數據。模擬原始數據生成後，會使用動態統計參數映射 (dSPM) 逆算子來建立估算來源。
+
+import os.path as op
+import numpy as np
+import mne
+from mne.datasets import sample
+
+print(__doc__)
+    
+#此範例會示範使用樣本受試者模擬原始數據的方法，因此要先載入樣本的資料。
+#在數據還沒有載入你的硬體的情況下，這一步驟會下載數據。
+#下載路徑已指定，不需要重新指定給函數。
+data_path = sample.data_path()
+subjects_dir = op.join(data_path, 'subjects')
+subject = 'sample'
+meg_path = op.join(data_path, 'MEG', subject)
+    
+#首先，獲取樣本受試者的信息結構。
+fname_info = op.join(meg_path, 'sample_audvis_raw.fif')
+info = mne.io.read_info(fname_info)
+tstep = 1 / info['sfreq']
+    
+#如果要模擬訊號源，我們會需要訊號空間。可以用從樣本的正向解法獲取。
+fwd_fname = op.join(meg_path, 'sample_audvis-meg-eeg-oct-6-fwd.fif')
+fwd = mne.read_forward_solution(fwd_fname)
+src = fwd['src']
+    
+#模擬原始數據會需要利用事件矩陣定義活動發生的時間，並且定義事件ID。
+#也需要定義雜訊協方差矩陣。
+#此示範中，以上兩者都會從模擬數據組載入，但若使用者有需求的話，也可以自定義。
+    
+fname_event = op.join(meg_path, 'sample_audvis_raw-eve.fif')
+fname_cov = op.join(meg_path, 'sample_audvis-cov.fif')
+
+events = mne.read_events(fname_event)
+noise_cov = mne.read_cov(fname_cov)
+    
+#標準樣本事件ID。這些值會對應到事件矩陣的第三欄。
+event_id = {'auditory/left': 1, 'auditory/right': 2, 'visual/left': 3,
+            'visual/right': 4, 'smiley': 5, 'button': 32}
+            
+#為了樣本示範更有效率，此處示範只製作少量事件。
+events = events[:80]
+
+
+#為了模擬來源的時間過程，需要為 4 個模擬實驗組中的每1個都指定所需活動區域的標籤。在aparc.a2009s 1 標籤內，製作一個將實驗組分別對應活動強度的字典，而在aparc.a2009s的分割標籤組中：
+
+#‘G_temp_sup-G_T_transv’ 是標的初級聽覺區的標籤
+#‘S_calcarine’ 是標的初級視覺區的標籤
+#在此4個實驗組中，每個實驗組都只有1個主要區域被激活，這代表著在聽覺區活動時，視覺區便沒有活動，反之亦然。此外，每個組別中，對側區域的活動比同側區域的還要活躍（此處設定為兩倍活躍度）。
+
+activations = {
+'auditory/left':
+    [('G_temp_sup-G_T_transv-lh', 30),   # 標籤, 活動 (nAm)
+     ('G_temp_sup-G_T_transv-rh', 60)],
+'auditory/right':
+    [('G_temp_sup-G_T_transv-lh', 60),
+     ('G_temp_sup-G_T_transv-rh', 30)],
+'visual/left':
+    [('S_calcarine-lh', 30),
+     ('S_calcarine-rh', 60)],
+'visual/right':
+    [('S_calcarine-lh', 60),
+    ('S_calcarine-rh', 30)],
+}
+
+annot = 'aparc.a2009s'
+
+# 載入四個必須要的標籤名。
+label_names = sorted(set(activation[0]
+                         for activation_list in activations.values()
+                         for activation in activation_list))
+region_names = list(activations.keys())
+
+#製作模擬來源活動
+#製作每個區域的來源時間過程。在此範例中，我們要一次模擬一個實驗組的來源活動。因此，每個誘發反應都將通過反應時間和持續時間進行參數化。
+def data_fun(times, latency, duration):
+"""Function to generate source time courses for evoked responses,
+parametrized by latency and duration."""
+#此為誘發反應生成源時間過程的功能，通過反應時間和持續時間進行參數化。
+f = 15  # oscillating frequency, beta band [Hz]
+sigma = 0.375 * duration
+sinusoid = np.sin(2 * np.pi * f * (times - latency))
+gf = np.exp(- (times - latency - (sigma / 4.) * rng.rand(1)) ** 2 /
+            (2 * (sigma ** 2)))
+return 1e-9 * sinusoid * gf
+
+#此處使用了 SourceSimulator，它允許指定事件將在何處（標籤label）、何時（event事件）、以什麼類型的形式（source_time_series來源時間序列）發生。
+
+#我們將添加 4 個區域的數據，每個區域包含 2 個標籤。由於 add_data 方法每次呼叫可以接受 1 個標籤，因此在每個區域將呼叫此程序2 次。
+
+#誘發反應生成的形式會使主要構成在 100 毫秒達到峰值，持續時間約為 30 毫秒，最開始出現的區域會在對側皮層。隨後是同側皮層的反應，約會在 15 毫秒後出現峰值。如之前所述，對側區域的激活幅度將高於同側 2 倍。
+
+#活動發生的時間是用事件來定義的。在此情況下，它們取自原始數據。第一列是事件的樣本，第二列沒有被使用，第三個是事件 id，使用的 4 個區域的每一個id都不同。
+
+times = np.arange(150, dtype=np.float64) / info['sfreq']
+duration = 0.03
+rng = np.random.RandomState(7)
+source_simulator = mne.simulation.SourceSimulator(src, tstep=tstep)
+
+for region_id, region_name in enumerate(region_names, 1):
+    events_tmp = events[np.where(events[:, 2] == region_id)[0], :]
+    for i in range(2):
+        label_name = activations[region_name][i][0]
+        label_tmp = mne.read_labels_from_annot(subject, annot,
+                                               subjects_dir=subjects_dir,
+                                               regexp=label_name,
+                                               verbose=False)
+        label_tmp = label_tmp[0]
+        amplitude_tmp = activations[region_name][i][1]
+        if region_name.split('/')[1][0] == label_tmp.hemi[0]:
+            latency_tmp = 0.115
+        else:
+            latency_tmp = 0.1
+        wf_tmp = data_fun(times, latency_tmp, duration)
+        source_simulator.add_data(label_tmp,
+                                  amplitude_tmp * wf_tmp,
+                                  events_tmp)
+
+# 為了取得 SourceEstimate物件，我們需要使用SourceSimulator類組的`get_stc()` 方法。
+stc_data = source_simulator.get_stc()
+
+#模擬原始數據
+#將來源時間序列投影到感測器空間的分佈。三種類型的噪聲將被添加到模擬的原始數據中：
+
+#從樣本數據的雜訊協方差得到的多元高斯噪聲
+#眼動雜訊 (EOG)
+#心跳雜訊 (ECG)
+#SourceSimulator 可以直接帶入 simulate_raw() 函數。
+
+raw_sim = mne.simulation.simulate_raw(info, source_simulator, forward=fwd)
+raw_sim.set_eeg_reference(projection=True)
+
+mne.simulation.add_noise(raw_sim, cov=noise_cov, random_state=0)
+mne.simulation.add_eog(raw_sim, random_state=0)
+mne.simulation.add_ecg(raw_sim, random_state=0)
+
+# 原始和模擬訊號的數據作圖。
+raw_sim.plot(title='Simulated raw data')
+
+#提取時期並計算誘發反應
+epochs = mne.Epochs(raw_sim, events, event_id, tmin=-0.2, tmax=0.3,
+                    baseline=(None, 0))
+evoked_aud_left = epochs['auditory/left'].average()
+evoked_vis_right = epochs['visual/right'].average()
+
+# 視覺化誘發資訊。
+evoked_aud_left.plot(spatial_colors=True)
+evoked_vis_right.plot(spatial_colors=True)
+
+#使用 dSPM 逆算子重建模擬來源時間過程
+#在此，聽覺和視覺區域的來源時間過程會被分開重建，並顯示它們的差異。這樣做只是為了更好的視覺化重建的來源。也正如預期的那般，當初級聽覺區域出現高度活動時，初級視覺區域將只具有低度活動，反之亦然。
+method, lambda2 = 'dSPM', 1. / 9.
+inv = mne.minimum_norm.make_inverse_operator(epochs.info, fwd, noise_cov)
+stc_aud = mne.minimum_norm.apply_inverse(
+    evoked_aud_left, inv, lambda2, method)
+stc_vis = mne.minimum_norm.apply_inverse(
+    evoked_vis_right, inv, lambda2, method)
+stc_diff = stc_aud - stc_vis
+
+brain = stc_diff.plot(subjects_dir=subjects_dir, initial_time=0.1,
+                      hemi='split', views=['lat', 'med'])
+                      
+#引用
+#1.Christophe Destrieux, Bruce Fischl, Anders Dale, and Eric Halgren. Automatic parcellation of human cortical gyri and sulci using standard anatomical nomenclature. NeuroImage, 53(1):1–15, 2010. doi:10.1016/j.neuroimage.2010.06.010.                      
+
