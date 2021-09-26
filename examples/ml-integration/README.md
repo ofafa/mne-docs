@@ -26,9 +26,14 @@ pipenv run python converter.py --help
 
 ```
 
-- run cli
+- run cli, by default convert the input file to csv
 ```
 pipenv run python converter.py --textgrid_file TG_00301.TextGrid --sample_rate 10
+```
+
+- also can convert to pickle or json, the file extension will be added automaticlly
+```
+pipenv run python converter.py --textgrid_file TG_00301.TextGrid --sample_rate 10 --output_type json --export_path output
 ```
 
 

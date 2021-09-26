@@ -17,7 +17,7 @@ def inputtextlines(filename):
 
 def converttextgrid2csv(textgridlines, textgridname):
 
-    csvtext = "TierType, TierName, tLabel, Start, End, Duration\n"
+    csvtext = "TierType,TierName,tLabel,Start,End,Duration\n"
 
     newtier = False
     for line in textgridlines[9:]:
@@ -60,9 +60,9 @@ def export_dataset(
     textgrid = inputtextlines(textgrid_file)
     text_csv = converttextgrid2csv(textgrid, textgrid_file)
     text_df = pd.read_csv(io.StringIO(text_csv))
-
-    # todo: convert start, end by round(value*sample_rate)
-
+    text_df["Start"] = text_df["Start"].apply(lambda x: round(x*sample_rate))
+    text_df["End"] = text_df["End"].apply(lambda x: round(x*sample_rate))
+    # todo: limit output only to the timestamp and event label
     if output_type.lower() == "csv":
         text_df.to_csv(export_path + '.csv')
     if output_type.lower() == "json":
